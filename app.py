@@ -2,49 +2,48 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
 import os
-import time
 
 app = Flask(__name__)
 CORS(app)
 
 API_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 
-# Alpha Vantage free tier uses .BSE suffix for BSE stocks
+# Alpha Vantage free tier uses .BO suffix for BSE stocks
 SYMBOLS = [
-    "RELIANCE.BSE", "TCS.BSE", "HDFCBANK.BSE", "INFY.BSE", "ICICIBANK.BSE",
-    "HINDUNILVR.BSE", "SBIN.BSE", "BHARTIARTL.BSE", "KOTAKBANK.BSE", "ITC.BSE",
-    "BAJFINANCE.BSE", "LT.BSE", "AXISBANK.BSE", "ASIANPAINT.BSE", "MARUTI.BSE",
-    "SUNPHARMA.BSE", "TITAN.BSE", "WIPRO.BSE", "HCLTECH.BSE", "NTPC.BSE",
-    "ONGC.BSE", "POWERGRID.BSE", "ADANIENT.BSE", "ADANIPORTS.BSE", "JSWSTEEL.BSE"
+    "RELIANCE.BO", "TCS.BO", "HDFCBANK.BO", "INFY.BO", "ICICIBANK.BO",
+    "HINDUNILVR.BO", "SBIN.BO", "BHARTIARTL.BO", "KOTAKBANK.BO", "ITC.BO",
+    "BAJFINANCE.BO", "LT.BO", "AXISBANK.BO", "ASIANPAINT.BO", "MARUTI.BO",
+    "SUNPHARMA.BO", "TITAN.BO", "WIPRO.BO", "HCLTECH.BO", "NTPC.BO",
+    "ONGC.BO", "POWERGRID.BO", "ADANIENT.BO", "ADANIPORTS.BO", "JSWSTEEL.BO"
 ]
 
 # Display names for stocks
 SYMBOL_NAMES = {
-    "RELIANCE.BSE": "Reliance Industries",
-    "TCS.BSE": "Tata Consultancy Services",
-    "HDFCBANK.BSE": "HDFC Bank",
-    "INFY.BSE": "Infosys",
-    "ICICIBANK.BSE": "ICICI Bank",
-    "HINDUNILVR.BSE": "Hindustan Unilever",
-    "SBIN.BSE": "State Bank of India",
-    "BHARTIARTL.BSE": "Bharti Airtel",
-    "KOTAKBANK.BSE": "Kotak Mahindra Bank",
-    "ITC.BSE": "ITC Limited",
-    "BAJFINANCE.BSE": "Bajaj Finance",
-    "LT.BSE": "Larsen & Toubro",
-    "AXISBANK.BSE": "Axis Bank",
-    "ASIANPAINT.BSE": "Asian Paints",
-    "MARUTI.BSE": "Maruti Suzuki",
-    "SUNPHARMA.BSE": "Sun Pharmaceutical",
-    "TITAN.BSE": "Titan Company",
-    "WIPRO.BSE": "Wipro",
-    "HCLTECH.BSE": "HCL Technologies",
-    "NTPC.BSE": "NTPC Limited",
-    "ONGC.BSE": "Oil & Natural Gas Corporation",
-    "POWERGRID.BSE": "Power Grid Corporation",
-    "ADANIENT.BSE": "Adani Enterprises",
-    "ADANIPORTS.BSE": "Adani Ports & SEZ",
-    "JSWSTEEL.BSE": "JSW Steel"
+    "RELIANCE.BO": "Reliance Industries",
+    "TCS.BO": "Tata Consultancy Services",
+    "HDFCBANK.BO": "HDFC Bank",
+    "INFY.BO": "Infosys",
+    "ICICIBANK.BO": "ICICI Bank",
+    "HINDUNILVR.BO": "Hindustan Unilever",
+    "SBIN.BO": "State Bank of India",
+    "BHARTIARTL.BO": "Bharti Airtel",
+    "KOTAKBANK.BO": "Kotak Mahindra Bank",
+    "ITC.BO": "ITC Limited",
+    "BAJFINANCE.BO": "Bajaj Finance",
+    "LT.BO": "Larsen & Toubro",
+    "AXISBANK.BO": "Axis Bank",
+    "ASIANPAINT.BO": "Asian Paints",
+    "MARUTI.BO": "Maruti Suzuki",
+    "SUNPHARMA.BO": "Sun Pharmaceutical",
+    "TITAN.BO": "Titan Company",
+    "WIPRO.BO": "Wipro",
+    "HCLTECH.BO": "HCL Technologies",
+    "NTPC.BO": "NTPC Limited",
+    "ONGC.BO": "Oil & Natural Gas Corporation",
+    "POWERGRID.BO": "Power Grid Corporation",
+    "ADANIENT.BO": "Adani Enterprises",
+    "ADANIPORTS.BO": "Adani Ports & SEZ",
+    "JSWSTEEL.BO": "JSW Steel"
 }
 
 BASE_URL = "https://www.alphavantage.co/query"
@@ -67,9 +66,6 @@ def get_stock(symbol):
         return jsonify({"error": "Alpha Vantage API key not configured. Set ALPHA_VANTAGE_KEY."}), 500
 
     try:
-        # Alpha Vantage free tier allows 5 calls per minute – we'll rely on frontend to pace,
-        # but we can add a tiny delay if needed later.
-
         # Get quote
         quote_params = {
             "function": "GLOBAL_QUOTE",
@@ -91,7 +87,7 @@ def get_stock(symbol):
         high = float(global_quote.get("03. high", 0))
         low = float(global_quote.get("04. low", 0))
         volume = int(global_quote.get("06. volume", 0))
-        name = SYMBOL_NAMES.get(symbol, symbol.replace(".BSE", ""))
+        name = SYMBOL_NAMES.get(symbol, symbol.replace(".BO", ""))
 
         # Get daily time series for chart (compact = last 100 days)
         daily_params = {
