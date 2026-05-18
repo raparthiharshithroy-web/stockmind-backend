@@ -1,129 +1,68 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 import yfinance as yf
+import traceback
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins — required for local HTML file access
+CORS(app)
 
-NSE_STOCKS = [
+# Top 25 NSE stocks
+SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-    "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "KOTAKBANK.NS",
-    "LT.NS", "BAJFINANCE.NS", "ASIANPAINT.NS", "AXISBANK.NS", "MARUTI.NS",
-    "SUNPHARMA.NS", "NESTLEIND.NS", "ULTRACEMCO.NS", "WIPRO.NS", "HCLTECH.NS",
-    "TITAN.NS", "POWERGRID.NS", "NTPC.NS", "TECHM.NS", "ADANIENT.NS"
+    "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
+    "BAJFINANCE.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS",
+    "SUNPHARMA.NS", "TITAN.NS", "WIPRO.NS", "HCLTECH.NS", "NTPC.NS",
+    "ONGC.NS", "POWERGRID.NS", "ADANIENT.NS", "ADANIPORTS.NS", "JSWSTEEL.NS"
 ]
 
-def safe_val(val, fallback=None):
-    """Return None-safe value from yfinance info dict."""
-    if val is None:
-        return fallback
-    try:
-        f = float(val)
-        return None if (f != f) else f   # NaN check
-    except (TypeError, ValueError):
-        return fallback
+@app.route('/')
+def home():
+    return jsonify({"status": "ok", "endpoints": ["/health", "/symbols", "/stock/<symbol>"]})
 
-@app.route("/health")
+@app.route('/health')
 def health():
     return jsonify({"status": "ok"})
 
-@app.route("/stocks")
-def get_all_stocks():
-    """Return price + key metrics for all 25 NSE stocks in one batch call."""
-    tickers = yf.Tickers(" ".join(NSE_STOCKS))
-    results = []
+@app.route('/symbols')
+def get_symbols():
+    return jsonify(SYMBOLS)
 
-    for symbol in NSE_STOCKS:
-        try:
-            t = tickers.tickers[symbol]
-            info = t.info or {}
-
-            price      = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
-            prev_close = safe_val(info.get("previousClose") or info.get("regularMarketPreviousClose"))
-            change_pct = round((price - prev_close) / prev_close * 100, 2) if price and prev_close else None
-
-            results.append({
-                "symbol":        symbol.replace(".NS", ""),
-                "name":          info.get("longName") or info.get("shortName") or symbol,
-                "price":         price,
-                "change_pct":    change_pct,
-                "prev_close":    prev_close,
-                "open":          safe_val(info.get("open") or info.get("regularMarketOpen")),
-                "day_high":      safe_val(info.get("dayHigh") or info.get("regularMarketDayHigh")),
-                "day_low":       safe_val(info.get("dayLow") or info.get("regularMarketDayLow")),
-                "week_52_high":  safe_val(info.get("fiftyTwoWeekHigh")),
-                "week_52_low":   safe_val(info.get("fiftyTwoWeekLow")),
-                "volume":        safe_val(info.get("volume") or info.get("regularMarketVolume")),
-                "market_cap":    safe_val(info.get("marketCap")),
-                "pe_ratio":      safe_val(info.get("trailingPE")),
-                "pb_ratio":      safe_val(info.get("priceToBook")),
-                "div_yield":     safe_val(info.get("dividendYield")),
-                "beta":          safe_val(info.get("beta")),
-                "roe":           safe_val(info.get("returnOnEquity")),
-                "debt_equity":   safe_val(info.get("debtToEquity")),
-                "sector":        info.get("sector", "N/A"),
-                "industry":      info.get("industry", "N/A"),
-            })
-        except Exception as e:
-            results.append({
-                "symbol": symbol.replace(".NS", ""),
-                "error":  str(e)
-            })
-
-    return jsonify({"stocks": results})
-
-@app.route("/stock/<symbol>")
-def get_single_stock(symbol):
-    """Detailed data for a single NSE stock (symbol without .NS)."""
-    ticker_sym = symbol.upper() + ".NS"
+@app.route('/stock/<symbol>')
+def get_stock(symbol):
     try:
-        t = yf.Ticker(ticker_sym)
-        info = t.info or {}
-        hist = t.history(period="1mo")
+        ticker = yf.Ticker(symbol)
+        info = ticker.info
+        hist = ticker.history(period="1mo")
+        if hist.empty:
+            return jsonify({"error": f"No data for {symbol}"}), 404
 
-        price      = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
-        prev_close = safe_val(info.get("previousClose") or info.get("regularMarketPreviousClose"))
-        change_pct = round((price - prev_close) / prev_close * 100, 2) if price and prev_close else None
+        current_price = info.get('currentPrice') or info.get('regularMarketPrice') or hist['Close'].iloc[-1]
+        prev_close = info.get('previousClose') or (hist['Close'].iloc[-2] if len(hist) > 1 else current_price)
+        change = current_price - prev_close
+        change_pct = (change / prev_close) * 100 if prev_close else 0
 
-        history_data = []
-        if not hist.empty:
-            for date, row in hist.iterrows():
-                history_data.append({
-                    "date":   str(date.date()),
-                    "open":   round(float(row["Open"]), 2),
-                    "high":   round(float(row["High"]), 2),
-                    "low":    round(float(row["Low"]), 2),
-                    "close":  round(float(row["Close"]), 2),
-                    "volume": int(row["Volume"])
-                })
-
-        return jsonify({
-            "symbol":       symbol.upper(),
-            "name":         info.get("longName") or info.get("shortName") or symbol,
-            "price":        price,
-            "change_pct":   change_pct,
-            "prev_close":   prev_close,
-            "open":         safe_val(info.get("open") or info.get("regularMarketOpen")),
-            "day_high":     safe_val(info.get("dayHigh") or info.get("regularMarketDayHigh")),
-            "day_low":      safe_val(info.get("dayLow") or info.get("regularMarketDayLow")),
-            "week_52_high": safe_val(info.get("fiftyTwoWeekHigh")),
-            "week_52_low":  safe_val(info.get("fiftyTwoWeekLow")),
-            "volume":       safe_val(info.get("volume") or info.get("regularMarketVolume")),
-            "market_cap":   safe_val(info.get("marketCap")),
-            "pe_ratio":     safe_val(info.get("trailingPE")),
-            "pb_ratio":     safe_val(info.get("priceToBook")),
-            "div_yield":    safe_val(info.get("dividendYield")),
-            "beta":         safe_val(info.get("beta")),
-            "roe":          safe_val(info.get("returnOnEquity")),
-            "debt_equity":  safe_val(info.get("debtToEquity")),
-            "eps":          safe_val(info.get("trailingEps")),
-            "sector":       info.get("sector", "N/A"),
-            "industry":     info.get("industry", "N/A"),
-            "description":  info.get("longBusinessSummary", ""),
-            "history":      history_data
-        })
+        data = {
+            "symbol": symbol,
+            "name": info.get('shortName') or info.get('longName') or symbol,
+            "currentPrice": round(current_price, 2),
+            "previousClose": round(prev_close, 2),
+            "change": round(change, 2),
+            "changePercent": round(change_pct, 2),
+            "dayHigh": info.get('dayHigh'),
+            "dayLow": info.get('dayLow'),
+            "volume": info.get('volume'),
+            "marketCap": info.get('marketCap'),
+            "pe": info.get('trailingPE'),
+            "sector": info.get('sector'),
+            "history": [
+                {"date": str(d.date()), "close": round(row['Close'], 2)}
+                for d, row in hist.iterrows()
+            ]
+        }
+        return jsonify(data)
     except Exception as e:
-        return jsonify({"symbol": symbol.upper(), "error": str(e)}), 500
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
