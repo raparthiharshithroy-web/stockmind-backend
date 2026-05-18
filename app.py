@@ -2,51 +2,52 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 import requests
 import os
+import time
 
 app = Flask(__name__)
 CORS(app)
 
-API_KEY = os.environ.get("TWELVE_DATA_KEY", "")
+API_KEY = os.environ.get("ALPHA_VANTAGE_KEY", "")
 
-# Correct Twelve Data symbol format for NSE (exchange: NSE)
+# Alpha Vantage free tier uses .BSE suffix for BSE stocks
 SYMBOLS = [
-    "RELIANCE:NSE", "TCS:NSE", "HDFCBANK:NSE", "INFY:NSE", "ICICIBANK:NSE",
-    "HINDUNILVR:NSE", "SBIN:NSE", "BHARTIARTL:NSE", "KOTAKBANK:NSE", "ITC:NSE",
-    "BAJFINANCE:NSE", "LT:NSE", "AXISBANK:NSE", "ASIANPAINT:NSE", "MARUTI:NSE",
-    "SUNPHARMA:NSE", "TITAN:NSE", "WIPRO:NSE", "HCLTECH:NSE", "NTPC:NSE",
-    "ONGC:NSE", "POWERGRID:NSE", "ADANIENT:NSE", "ADANIPORTS:NSE", "JSWSTEEL:NSE"
+    "RELIANCE.BSE", "TCS.BSE", "HDFCBANK.BSE", "INFY.BSE", "ICICIBANK.BSE",
+    "HINDUNILVR.BSE", "SBIN.BSE", "BHARTIARTL.BSE", "KOTAKBANK.BSE", "ITC.BSE",
+    "BAJFINANCE.BSE", "LT.BSE", "AXISBANK.BSE", "ASIANPAINT.BSE", "MARUTI.BSE",
+    "SUNPHARMA.BSE", "TITAN.BSE", "WIPRO.BSE", "HCLTECH.BSE", "NTPC.BSE",
+    "ONGC.BSE", "POWERGRID.BSE", "ADANIENT.BSE", "ADANIPORTS.BSE", "JSWSTEEL.BSE"
 ]
 
-# Map symbols to display names
+# Display names for stocks
 SYMBOL_NAMES = {
-    "RELIANCE:NSE": "Reliance Industries",
-    "TCS:NSE": "Tata Consultancy Services",
-    "HDFCBANK:NSE": "HDFC Bank",
-    "INFY:NSE": "Infosys",
-    "ICICIBANK:NSE": "ICICI Bank",
-    "HINDUNILVR:NSE": "Hindustan Unilever",
-    "SBIN:NSE": "State Bank of India",
-    "BHARTIARTL:NSE": "Bharti Airtel",
-    "KOTAKBANK:NSE": "Kotak Mahindra Bank",
-    "ITC:NSE": "ITC Limited",
-    "BAJFINANCE:NSE": "Bajaj Finance",
-    "LT:NSE": "Larsen & Toubro",
-    "AXISBANK:NSE": "Axis Bank",
-    "ASIANPAINT:NSE": "Asian Paints",
-    "MARUTI:NSE": "Maruti Suzuki",
-    "SUNPHARMA:NSE": "Sun Pharmaceutical",
-    "TITAN:NSE": "Titan Company",
-    "WIPRO:NSE": "Wipro",
-    "HCLTECH:NSE": "HCL Technologies",
-    "NTPC:NSE": "NTPC Limited",
-    "ONGC:NSE": "Oil & Natural Gas Corporation",
-    "POWERGRID:NSE": "Power Grid Corporation",
-    "ADANIENT:NSE": "Adani Enterprises",
-    "ADANIPORTS:NSE": "Adani Ports & SEZ",
-    "JSWSTEEL:NSE": "JSW Steel"
+    "RELIANCE.BSE": "Reliance Industries",
+    "TCS.BSE": "Tata Consultancy Services",
+    "HDFCBANK.BSE": "HDFC Bank",
+    "INFY.BSE": "Infosys",
+    "ICICIBANK.BSE": "ICICI Bank",
+    "HINDUNILVR.BSE": "Hindustan Unilever",
+    "SBIN.BSE": "State Bank of India",
+    "BHARTIARTL.BSE": "Bharti Airtel",
+    "KOTAKBANK.BSE": "Kotak Mahindra Bank",
+    "ITC.BSE": "ITC Limited",
+    "BAJFINANCE.BSE": "Bajaj Finance",
+    "LT.BSE": "Larsen & Toubro",
+    "AXISBANK.BSE": "Axis Bank",
+    "ASIANPAINT.BSE": "Asian Paints",
+    "MARUTI.BSE": "Maruti Suzuki",
+    "SUNPHARMA.BSE": "Sun Pharmaceutical",
+    "TITAN.BSE": "Titan Company",
+    "WIPRO.BSE": "Wipro",
+    "HCLTECH.BSE": "HCL Technologies",
+    "NTPC.BSE": "NTPC Limited",
+    "ONGC.BSE": "Oil & Natural Gas Corporation",
+    "POWERGRID.BSE": "Power Grid Corporation",
+    "ADANIENT.BSE": "Adani Enterprises",
+    "ADANIPORTS.BSE": "Adani Ports & SEZ",
+    "JSWSTEEL.BSE": "JSW Steel"
 }
 
-BASE_URL = "https://api.twelvedata.com"
+BASE_URL = "https://www.alphavantage.co/query"
 
 @app.route('/')
 def home():
@@ -60,48 +61,57 @@ def health():
 def get_symbols():
     return jsonify(SYMBOLS)
 
-@app.route('/stock/<path:symbol>')
+@app.route('/stock/<symbol>')
 def get_stock(symbol):
     if not API_KEY:
-        return jsonify({"error": "Twelve Data API key not configured. Set TWELVE_DATA_KEY."}), 500
+        return jsonify({"error": "Alpha Vantage API key not configured. Set ALPHA_VANTAGE_KEY."}), 500
 
     try:
-        # Validate symbol format
-        if ":" not in symbol:
-            return jsonify({"error": "Invalid symbol format. Use SYMBOL:NSE (e.g., RELIANCE:NSE)"}), 400
+        # Alpha Vantage free tier allows 5 calls per minute – we'll rely on frontend to pace,
+        # but we can add a tiny delay if needed later.
 
         # Get quote
-        quote_url = f"{BASE_URL}/quote?symbol={symbol}&apikey={API_KEY}"
-        quote_resp = requests.get(quote_url)
+        quote_params = {
+            "function": "GLOBAL_QUOTE",
+            "symbol": symbol,
+            "apikey": API_KEY
+        }
+        quote_resp = requests.get(BASE_URL, params=quote_params)
         quote_data = quote_resp.json()
 
-        if "code" in quote_data and quote_data["code"] != 200:
-            return jsonify({"error": quote_data.get("message", "Unknown error")}), 400
+        if "Global Quote" not in quote_data or not quote_data["Global Quote"]:
+            return jsonify({"error": f"No quote data for {symbol}. Check if the symbol is correct or API limit reached."}), 404
 
-        # Handle empty or invalid response
-        if not quote_data or "symbol" not in quote_data:
-            return jsonify({"error": f"No quote data returned for {symbol}"}), 404
+        global_quote = quote_data["Global Quote"]
+        current = float(global_quote.get("05. price", 0))
+        prev_close = float(global_quote.get("08. previous close", current))
+        change = float(global_quote.get("09. change", 0))
+        change_pct_str = global_quote.get("10. change percent", "0%").replace("%", "")
+        change_pct = float(change_pct_str)
+        high = float(global_quote.get("03. high", 0))
+        low = float(global_quote.get("04. low", 0))
+        volume = int(global_quote.get("06. volume", 0))
+        name = SYMBOL_NAMES.get(symbol, symbol.replace(".BSE", ""))
 
-        current = float(quote_data.get("close", 0))
-        prev_close = float(quote_data.get("previous_close", current))
-        change = float(quote_data.get("change", 0))
-        change_pct = float(quote_data.get("percent_change", 0))
-        high = float(quote_data.get("high", 0))
-        low = float(quote_data.get("low", 0))
-        volume = int(quote_data.get("volume", 0))
-        name = SYMBOL_NAMES.get(symbol, quote_data.get("name", symbol))
-
-        # Get 30-day chart data
-        timeseries_url = f"{BASE_URL}/time_series?symbol={symbol}&interval=1day&outputsize=30&apikey={API_KEY}"
-        ts_resp = requests.get(timeseries_url)
-        ts_data = ts_resp.json()
+        # Get daily time series for chart (compact = last 100 days)
+        daily_params = {
+            "function": "TIME_SERIES_DAILY",
+            "symbol": symbol,
+            "apikey": API_KEY,
+            "outputsize": "compact"
+        }
+        daily_resp = requests.get(BASE_URL, params=daily_params)
+        daily_data = daily_resp.json()
 
         history = []
-        if "values" in ts_data:
-            for day in ts_data["values"]:
+        if "Time Series (Daily)" in daily_data:
+            time_series = daily_data["Time Series (Daily)"]
+            sorted_dates = sorted(time_series.keys(), reverse=True)[:30]
+            for date in sorted_dates:
+                day_data = time_series[date]
                 history.append({
-                    "date": day["datetime"],
-                    "close": round(float(day["close"]), 2)
+                    "date": date,
+                    "close": round(float(day_data["4. close"]), 2)
                 })
             history.reverse()
 
