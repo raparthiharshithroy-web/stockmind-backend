@@ -8,13 +8,43 @@ CORS(app)
 
 API_KEY = os.environ.get("TWELVE_DATA_KEY", "")
 
+# Correct Twelve Data symbol format for NSE (exchange: NSE)
 SYMBOLS = [
-    "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-    "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
-    "BAJFINANCE.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS",
-    "SUNPHARMA.NS", "TITAN.NS", "WIPRO.NS", "HCLTECH.NS", "NTPC.NS",
-    "ONGC.NS", "POWERGRID.NS", "ADANIENT.NS", "ADANIPORTS.NS", "JSWSTEEL.NS"
+    "RELIANCE:NSE", "TCS:NSE", "HDFCBANK:NSE", "INFY:NSE", "ICICIBANK:NSE",
+    "HINDUNILVR:NSE", "SBIN:NSE", "BHARTIARTL:NSE", "KOTAKBANK:NSE", "ITC:NSE",
+    "BAJFINANCE:NSE", "LT:NSE", "AXISBANK:NSE", "ASIANPAINT:NSE", "MARUTI:NSE",
+    "SUNPHARMA:NSE", "TITAN:NSE", "WIPRO:NSE", "HCLTECH:NSE", "NTPC:NSE",
+    "ONGC:NSE", "POWERGRID:NSE", "ADANIENT:NSE", "ADANIPORTS:NSE", "JSWSTEEL:NSE"
 ]
+
+# Map symbols to display names
+SYMBOL_NAMES = {
+    "RELIANCE:NSE": "Reliance Industries",
+    "TCS:NSE": "Tata Consultancy Services",
+    "HDFCBANK:NSE": "HDFC Bank",
+    "INFY:NSE": "Infosys",
+    "ICICIBANK:NSE": "ICICI Bank",
+    "HINDUNILVR:NSE": "Hindustan Unilever",
+    "SBIN:NSE": "State Bank of India",
+    "BHARTIARTL:NSE": "Bharti Airtel",
+    "KOTAKBANK:NSE": "Kotak Mahindra Bank",
+    "ITC:NSE": "ITC Limited",
+    "BAJFINANCE:NSE": "Bajaj Finance",
+    "LT:NSE": "Larsen & Toubro",
+    "AXISBANK:NSE": "Axis Bank",
+    "ASIANPAINT:NSE": "Asian Paints",
+    "MARUTI:NSE": "Maruti Suzuki",
+    "SUNPHARMA:NSE": "Sun Pharmaceutical",
+    "TITAN:NSE": "Titan Company",
+    "WIPRO:NSE": "Wipro",
+    "HCLTECH:NSE": "HCL Technologies",
+    "NTPC:NSE": "NTPC Limited",
+    "ONGC:NSE": "Oil & Natural Gas Corporation",
+    "POWERGRID:NSE": "Power Grid Corporation",
+    "ADANIENT:NSE": "Adani Enterprises",
+    "ADANIPORTS:NSE": "Adani Ports & SEZ",
+    "JSWSTEEL:NSE": "JSW Steel"
+}
 
 BASE_URL = "https://api.twelvedata.com"
 
@@ -30,12 +60,16 @@ def health():
 def get_symbols():
     return jsonify(SYMBOLS)
 
-@app.route('/stock/<symbol>')
+@app.route('/stock/<path:symbol>')
 def get_stock(symbol):
     if not API_KEY:
         return jsonify({"error": "Twelve Data API key not configured. Set TWELVE_DATA_KEY."}), 500
 
     try:
+        # Validate symbol format
+        if ":" not in symbol:
+            return jsonify({"error": "Invalid symbol format. Use SYMBOL:NSE (e.g., RELIANCE:NSE)"}), 400
+
         # Get quote
         quote_url = f"{BASE_URL}/quote?symbol={symbol}&apikey={API_KEY}"
         quote_resp = requests.get(quote_url)
@@ -44,6 +78,10 @@ def get_stock(symbol):
         if "code" in quote_data and quote_data["code"] != 200:
             return jsonify({"error": quote_data.get("message", "Unknown error")}), 400
 
+        # Handle empty or invalid response
+        if not quote_data or "symbol" not in quote_data:
+            return jsonify({"error": f"No quote data returned for {symbol}"}), 404
+
         current = float(quote_data.get("close", 0))
         prev_close = float(quote_data.get("previous_close", current))
         change = float(quote_data.get("change", 0))
@@ -51,7 +89,7 @@ def get_stock(symbol):
         high = float(quote_data.get("high", 0))
         low = float(quote_data.get("low", 0))
         volume = int(quote_data.get("volume", 0))
-        name = quote_data.get("name", symbol.replace(".NS", ""))
+        name = SYMBOL_NAMES.get(symbol, quote_data.get("name", symbol))
 
         # Get 30-day chart data
         timeseries_url = f"{BASE_URL}/time_series?symbol={symbol}&interval=1day&outputsize=30&apikey={API_KEY}"
@@ -65,7 +103,7 @@ def get_stock(symbol):
                     "date": day["datetime"],
                     "close": round(float(day["close"]), 2)
                 })
-            history.reverse()  # oldest first
+            history.reverse()
 
         data = {
             "symbol": symbol,
