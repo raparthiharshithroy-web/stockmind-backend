@@ -89,5 +89,12 @@ def get_stock(symbol):
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
-if __name__ == '__main__':
+@app.route('/debug')
+def debug():
+    key_exists = bool(API_KEY)
+    return jsonify({
+        "key_configured": key_exists,
+        "key_first_chars": API_KEY[:4] + "..." if key_exists else "NOT SET"
+    })
+    if __name__ == '__main__':
     app.run(host='0.0.0.0', port=10000)
