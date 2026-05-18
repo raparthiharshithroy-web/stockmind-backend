@@ -9,7 +9,7 @@ CORS(app)
 
 API_KEY = os.environ.get("MARKETSTACK_KEY", "")
 if not API_KEY:
-    print("WARNING: MARKETSTACK_KEY not set. /stocks/all will fail.")
+    print("WARNING: MARKETSTACK_KEY not set. /batch will fail.")
 
 SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
@@ -51,22 +51,17 @@ BASE_URL = "https://api.marketstack.com/v1"
 
 @app.route('/')
 def home():
-    return jsonify({"status": "ok", "endpoints": ["/health", "/symbols", "/stocks/all", "/stock/<symbol>"]})
+    return jsonify({"status": "ok", "endpoints": ["/health", "/symbols", "/batch", "/stock/<symbol>"]})
 
 @app.route('/health')
 def health():
     return jsonify({"status": "ok"})
 
-@app.route('/source')
-def source():
-    with open(__file__, 'r') as f:
-        return f.read()
-
 @app.route('/symbols')
 def get_symbols():
     return jsonify([s.replace(".NS", "") for s in SYMBOLS])
 
-@app.route('/stocks/all')
+@app.route('/batch')
 def get_all_stocks():
     if not API_KEY:
         return jsonify({"error": "Marketstack API key not configured."}), 500
