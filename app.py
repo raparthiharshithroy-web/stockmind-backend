@@ -1,129 +1,138 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
+import requests
+import os
 import yfinance as yf
 
 app = Flask(__name__)
-CORS(app)  # Allow all origins — required for local HTML file access
+CORS(app)
 
-NSE_STOCKS = [
+API_KEY = os.environ.get("MARKETSTACK_KEY", "")
+
+SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
-    "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "KOTAKBANK.NS",
-    "LT.NS", "BAJFINANCE.NS", "ASIANPAINT.NS", "AXISBANK.NS", "MARUTI.NS",
-    "SUNPHARMA.NS", "NESTLEIND.NS", "ULTRACEMCO.NS", "WIPRO.NS", "HCLTECH.NS",
-    "TITAN.NS", "POWERGRID.NS", "NTPC.NS", "TECHM.NS", "ADANIENT.NS"
+    "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
+    "BAJFINANCE.NS", "LT.NS", "AXISBANK.NS", "ASIANPAINT.NS", "MARUTI.NS",
+    "SUNPHARMA.NS", "TITAN.NS", "WIPRO.NS", "HCLTECH.NS", "NTPC.NS",
+    "ONGC.NS", "POWERGRID.NS", "ADANIENT.NS", "ADANIPORTS.NS", "JSWSTEEL.NS"
 ]
 
-def safe_val(val, fallback=None):
-    """Return None-safe value from yfinance info dict."""
-    if val is None:
-        return fallback
-    try:
-        f = float(val)
-        return None if (f != f) else f   # NaN check
-    except (TypeError, ValueError):
-        return fallback
+STOCK_MAP = {
+    "RELIANCE.NS":  {"name": "Reliance Industries",          "ms_symbol": "RELIANCE.XBOM"},
+    "TCS.NS":       {"name": "Tata Consultancy Services",    "ms_symbol": "TCS.XBOM"},
+    "HDFCBANK.NS":  {"name": "HDFC Bank",                    "ms_symbol": "HDFCBANK.XBOM"},
+    "INFY.NS":      {"name": "Infosys",                      "ms_symbol": "INFY.XBOM"},
+    "ICICIBANK.NS": {"name": "ICICI Bank",                   "ms_symbol": "ICICIBANK.XBOM"},
+    "HINDUNILVR.NS":{"name": "Hindustan Unilever",           "ms_symbol": "HINDUNILVR.XBOM"},
+    "SBIN.NS":      {"name": "State Bank of India",          "ms_symbol": "SBIN.XBOM"},
+    "BHARTIARTL.NS":{"name": "Bharti Airtel",                "ms_symbol": "BHARTIARTL.XBOM"},
+    "KOTAKBANK.NS": {"name": "Kotak Mahindra Bank",          "ms_symbol": "KOTAKBANK.XBOM"},
+    "ITC.NS":       {"name": "ITC Limited",                  "ms_symbol": "ITC.XBOM"},
+    "BAJFINANCE.NS":{"name": "Bajaj Finance",                "ms_symbol": "BAJFINANCE.XBOM"},
+    "LT.NS":        {"name": "Larsen & Toubro",              "ms_symbol": "LT.XBOM"},
+    "AXISBANK.NS":  {"name": "Axis Bank",                    "ms_symbol": "AXISBANK.XBOM"},
+    "ASIANPAINT.NS":{"name": "Asian Paints",                 "ms_symbol": "ASIANPAINT.XBOM"},
+    "MARUTI.NS":    {"name": "Maruti Suzuki",                "ms_symbol": "MARUTI.XBOM"},
+    "SUNPHARMA.NS": {"name": "Sun Pharmaceutical",           "ms_symbol": "SUNPHARMA.XBOM"},
+    "TITAN.NS":     {"name": "Titan Company",                "ms_symbol": "TITAN.XBOM"},
+    "WIPRO.NS":     {"name": "Wipro",                        "ms_symbol": "WIPRO.XBOM"},
+    "HCLTECH.NS":   {"name": "HCL Technologies",             "ms_symbol": "HCLTECH.XBOM"},
+    "NTPC.NS":      {"name": "NTPC Limited",                 "ms_symbol": "NTPC.XBOM"},
+    "ONGC.NS":      {"name": "Oil & Natural Gas Corporation","ms_symbol": "ONGC.XBOM"},
+    "POWERGRID.NS": {"name": "Power Grid Corporation",       "ms_symbol": "POWERGRID.XBOM"},
+    "ADANIENT.NS":  {"name": "Adani Enterprises",            "ms_symbol": "ADANIENT.XBOM"},
+    "ADANIPORTS.NS":{"name": "Adani Ports & SEZ",            "ms_symbol": "ADANIPORTS.XBOM"},
+    "JSWSTEEL.NS":  {"name": "JSW Steel",                    "ms_symbol": "JSWSTEEL.XBOM"}
+}
 
-@app.route("/health")
+@app.route('/')
+def home():
+    return jsonify({"status": "ok", "endpoints": ["/health", "/symbols", "/batch", "/stock/<symbol>"]})
+
+@app.route('/health')
 def health():
     return jsonify({"status": "ok"})
 
-@app.route("/stocks")
+@app.route('/symbols')
+def get_symbols():
+    return jsonify([s.replace(".NS", "") for s in SYMBOLS])
+
+@app.route('/batch')
 def get_all_stocks():
-    """Return price + key metrics for all 25 NSE stocks in one batch call."""
-    tickers = yf.Tickers(" ".join(NSE_STOCKS))
-    results = []
-
-    for symbol in NSE_STOCKS:
-        try:
-            t = tickers.tickers[symbol]
-            info = t.info or {}
-
-            price      = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
-            prev_close = safe_val(info.get("previousClose") or info.get("regularMarketPreviousClose"))
-            change_pct = round((price - prev_close) / prev_close * 100, 2) if price and prev_close else None
-
-            results.append({
-                "symbol":        symbol.replace(".NS", ""),
-                "name":          info.get("longName") or info.get("shortName") or symbol,
-                "price":         price,
-                "change_pct":    change_pct,
-                "prev_close":    prev_close,
-                "open":          safe_val(info.get("open") or info.get("regularMarketOpen")),
-                "day_high":      safe_val(info.get("dayHigh") or info.get("regularMarketDayHigh")),
-                "day_low":       safe_val(info.get("dayLow") or info.get("regularMarketDayLow")),
-                "week_52_high":  safe_val(info.get("fiftyTwoWeekHigh")),
-                "week_52_low":   safe_val(info.get("fiftyTwoWeekLow")),
-                "volume":        safe_val(info.get("volume") or info.get("regularMarketVolume")),
-                "market_cap":    safe_val(info.get("marketCap")),
-                "pe_ratio":      safe_val(info.get("trailingPE")),
-                "pb_ratio":      safe_val(info.get("priceToBook")),
-                "div_yield":     safe_val(info.get("dividendYield")),
-                "beta":          safe_val(info.get("beta")),
-                "roe":           safe_val(info.get("returnOnEquity")),
-                "debt_equity":   safe_val(info.get("debtToEquity")),
-                "sector":        info.get("sector", "N/A"),
-                "industry":      info.get("industry", "N/A"),
-            })
-        except Exception as e:
-            results.append({
-                "symbol": symbol.replace(".NS", ""),
-                "error":  str(e)
-            })
-
-    return jsonify({"stocks": results})
-
-@app.route("/stock/<symbol>")
-def get_single_stock(symbol):
-    """Detailed data for a single NSE stock (symbol without .NS)."""
-    ticker_sym = symbol.upper() + ".NS"
+    if not API_KEY:
+        return jsonify({"error": "MARKETSTACK_KEY not set on Render"}), 500
     try:
-        t = yf.Ticker(ticker_sym)
-        info = t.info or {}
-        hist = t.history(period="1mo")
+        ms_symbols = [STOCK_MAP[s]["ms_symbol"] for s in SYMBOLS if s in STOCK_MAP]
+        symbols_param = ",".join(ms_symbols)
 
-        price      = safe_val(info.get("currentPrice") or info.get("regularMarketPrice"))
-        prev_close = safe_val(info.get("previousClose") or info.get("regularMarketPreviousClose"))
-        change_pct = round((price - prev_close) / prev_close * 100, 2) if price and prev_close else None
+        # CORRECT endpoint: /v1/eod/latest?symbols=A,B,C&access_key=KEY
+        resp = requests.get(
+            "https://api.marketstack.com/v1/eod/latest",
+            params={
+                "access_key": API_KEY,
+                "symbols": symbols_param,
+                "limit": 25
+            },
+            timeout=15
+        )
+        raw = resp.json()
 
-        history_data = []
-        if not hist.empty:
-            for date, row in hist.iterrows():
-                history_data.append({
-                    "date":   str(date.date()),
-                    "open":   round(float(row["Open"]), 2),
-                    "high":   round(float(row["High"]), 2),
-                    "low":    round(float(row["Low"]), 2),
-                    "close":  round(float(row["Close"]), 2),
-                    "volume": int(row["Volume"])
-                })
+        if "error" in raw:
+            return jsonify({"error": str(raw["error"])}), 500
 
-        return jsonify({
-            "symbol":       symbol.upper(),
-            "name":         info.get("longName") or info.get("shortName") or symbol,
-            "price":        price,
-            "change_pct":   change_pct,
-            "prev_close":   prev_close,
-            "open":         safe_val(info.get("open") or info.get("regularMarketOpen")),
-            "day_high":     safe_val(info.get("dayHigh") or info.get("regularMarketDayHigh")),
-            "day_low":      safe_val(info.get("dayLow") or info.get("regularMarketDayLow")),
-            "week_52_high": safe_val(info.get("fiftyTwoWeekHigh")),
-            "week_52_low":  safe_val(info.get("fiftyTwoWeekLow")),
-            "volume":       safe_val(info.get("volume") or info.get("regularMarketVolume")),
-            "market_cap":   safe_val(info.get("marketCap")),
-            "pe_ratio":     safe_val(info.get("trailingPE")),
-            "pb_ratio":     safe_val(info.get("priceToBook")),
-            "div_yield":    safe_val(info.get("dividendYield")),
-            "beta":         safe_val(info.get("beta")),
-            "roe":          safe_val(info.get("returnOnEquity")),
-            "debt_equity":  safe_val(info.get("debtToEquity")),
-            "eps":          safe_val(info.get("trailingEps")),
-            "sector":       info.get("sector", "N/A"),
-            "industry":     info.get("industry", "N/A"),
-            "description":  info.get("longBusinessSummary", ""),
-            "history":      history_data
-        })
+        eod_list = raw.get("data", [])
+        eod_lookup = {item["symbol"]: item for item in eod_list}
+
+        result = []
+        for sym in SYMBOLS:
+            if sym not in STOCK_MAP:
+                continue
+            ms_sym = STOCK_MAP[sym]["ms_symbol"]
+            name   = STOCK_MAP[sym]["name"]
+            eod    = eod_lookup.get(ms_sym, {})
+
+            close  = float(eod.get("close") or 0)
+            adj    = float(eod.get("adj_close") or close)
+            change = float(eod.get("change") or 0)
+            chgpct = float(eod.get("change_pct") or 0)
+
+            result.append({
+                "symbol":        sym.replace(".NS", ""),
+                "name":          name,
+                "currentPrice":  round(close, 2),
+                "previousClose": round(adj, 2),
+                "change":        round(change, 2),
+                "changePercent": round(chgpct, 2),
+                "dayHigh":       round(float(eod.get("high") or 0), 2) or None,
+                "dayLow":        round(float(eod.get("low") or 0), 2) or None,
+                "volume":        int(eod.get("volume") or 0) or None,
+                "marketCap":     None,
+                "pe":            None,
+                "sector":        "N/A",
+                "history":       []
+            })
+
+        return jsonify(result)
+
     except Exception as e:
-        return jsonify({"symbol": symbol.upper(), "error": str(e)}), 500
+        return jsonify({"error": str(e)}), 500
 
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+
+@app.route('/stock/<symbol>')
+def get_stock_history(symbol):
+    try:
+        ticker = yf.Ticker(symbol.upper() + ".NS")
+        hist   = ticker.history(period="1mo")
+        if hist.empty:
+            return jsonify({"error": f"No data for {symbol}"}), 404
+        history = [
+            {"date": str(d.date()), "close": round(row['Close'], 2)}
+            for d, row in hist.iterrows()
+        ]
+        return jsonify({"symbol": symbol.upper(), "history": history})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=10000)
