@@ -6,7 +6,6 @@ import traceback
 app = Flask(__name__)
 CORS(app)
 
-# Top 25 NSE stocks
 SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
     "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
@@ -31,35 +30,45 @@ def get_symbols():
 def get_stock(symbol):
     try:
         ticker = yf.Ticker(symbol)
-        info = ticker.info
-        hist = ticker.history(period="1mo")
-        if hist.empty:
+
+        # Get last 5 days of data for current price + previous close
+        recent = ticker.history(period="5d")
+        if recent.empty:
             return jsonify({"error": f"No data for {symbol}"}), 404
 
-        current_price = info.get('currentPrice') or info.get('regularMarketPrice') or hist['Close'].iloc[-1]
-        prev_close = info.get('previousClose') or (hist['Close'].iloc[-2] if len(hist) > 1 else current_price)
+        current_price = recent['Close'].iloc[-1]
+        prev_close = recent['Close'].iloc[-2] if len(recent) > 1 else current_price
+        day_high = recent['High'].iloc[-1]
+        day_low = recent['Low'].iloc[-1]
+        volume = recent['Volume'].iloc[-1]
+
         change = current_price - prev_close
         change_pct = (change / prev_close) * 100 if prev_close else 0
 
+        # Get 1 month of history for chart
+        hist = ticker.history(period="1mo")
+        chart_data = [
+            {"date": str(d.date()), "close": round(row['Close'], 2)}
+            for d, row in hist.iterrows()
+        ] if not hist.empty else []
+
         data = {
             "symbol": symbol,
-            "name": info.get('shortName') or info.get('longName') or symbol,
+            "name": symbol.replace(".NS", ""),  # Use symbol as name for now
             "currentPrice": round(current_price, 2),
             "previousClose": round(prev_close, 2),
             "change": round(change, 2),
             "changePercent": round(change_pct, 2),
-            "dayHigh": info.get('dayHigh'),
-            "dayLow": info.get('dayLow'),
-            "volume": info.get('volume'),
-            "marketCap": info.get('marketCap'),
-            "pe": info.get('trailingPE'),
-            "sector": info.get('sector'),
-            "history": [
-                {"date": str(d.date()), "close": round(row['Close'], 2)}
-                for d, row in hist.iterrows()
-            ]
+            "dayHigh": round(day_high, 2) if day_high else None,
+            "dayLow": round(day_low, 2) if day_low else None,
+            "volume": int(volume) if volume else None,
+            "marketCap": None,
+            "pe": None,
+            "sector": "N/A",
+            "history": chart_data
         }
         return jsonify(data)
+
     except Exception as e:
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
