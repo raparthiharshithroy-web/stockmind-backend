@@ -7,12 +7,10 @@ import yfinance as yf
 app = Flask(__name__)
 CORS(app)
 
-# --- Configuration ---
 API_KEY = os.environ.get("MARKETSTACK_KEY", "")
 if not API_KEY:
-    print("WARNING: MARKETSTACK_KEY environment variable not set. /stocks/all will fail.")
+    print("WARNING: MARKETSTACK_KEY not set. /stocks/all will fail.")
 
-# List of NSE symbols for Yahoo Finance
 SYMBOLS = [
     "RELIANCE.NS", "TCS.NS", "HDFCBANK.NS", "INFY.NS", "ICICIBANK.NS",
     "HINDUNILVR.NS", "SBIN.NS", "BHARTIARTL.NS", "KOTAKBANK.NS", "ITC.NS",
@@ -21,11 +19,31 @@ SYMBOLS = [
     "ONGC.NS", "POWERGRID.NS", "ADANIENT.NS", "ADANIPORTS.NS", "JSWSTEEL.NS"
 ]
 
-# Mapping from Yahoo symbol to company name and Marketstack symbol
 STOCK_MAP = {
     "RELIANCE.NS": {"name": "Reliance Industries", "ms_symbol": "RELIANCE.XBOM"},
     "TCS.NS": {"name": "Tata Consultancy Services", "ms_symbol": "TCS.XBOM"},
-    # ... (The rest of the mapping is the same as before, just add the rest here)
+    "HDFCBANK.NS": {"name": "HDFC Bank", "ms_symbol": "HDFCBANK.XBOM"},
+    "INFY.NS": {"name": "Infosys", "ms_symbol": "INFY.XBOM"},
+    "ICICIBANK.NS": {"name": "ICICI Bank", "ms_symbol": "ICICIBANK.XBOM"},
+    "HINDUNILVR.NS": {"name": "Hindustan Unilever", "ms_symbol": "HINDUNILVR.XBOM"},
+    "SBIN.NS": {"name": "State Bank of India", "ms_symbol": "SBIN.XBOM"},
+    "BHARTIARTL.NS": {"name": "Bharti Airtel", "ms_symbol": "BHARTIARTL.XBOM"},
+    "KOTAKBANK.NS": {"name": "Kotak Mahindra Bank", "ms_symbol": "KOTAKBANK.XBOM"},
+    "ITC.NS": {"name": "ITC Limited", "ms_symbol": "ITC.XBOM"},
+    "BAJFINANCE.NS": {"name": "Bajaj Finance", "ms_symbol": "BAJFINANCE.XBOM"},
+    "LT.NS": {"name": "Larsen & Toubro", "ms_symbol": "LT.XBOM"},
+    "AXISBANK.NS": {"name": "Axis Bank", "ms_symbol": "AXISBANK.XBOM"},
+    "ASIANPAINT.NS": {"name": "Asian Paints", "ms_symbol": "ASIANPAINT.XBOM"},
+    "MARUTI.NS": {"name": "Maruti Suzuki", "ms_symbol": "MARUTI.XBOM"},
+    "SUNPHARMA.NS": {"name": "Sun Pharmaceutical", "ms_symbol": "SUNPHARMA.XBOM"},
+    "TITAN.NS": {"name": "Titan Company", "ms_symbol": "TITAN.XBOM"},
+    "WIPRO.NS": {"name": "Wipro", "ms_symbol": "WIPRO.XBOM"},
+    "HCLTECH.NS": {"name": "HCL Technologies", "ms_symbol": "HCLTECH.XBOM"},
+    "NTPC.NS": {"name": "NTPC Limited", "ms_symbol": "NTPC.XBOM"},
+    "ONGC.NS": {"name": "Oil & Natural Gas Corporation", "ms_symbol": "ONGC.XBOM"},
+    "POWERGRID.NS": {"name": "Power Grid Corporation", "ms_symbol": "POWERGRID.XBOM"},
+    "ADANIENT.NS": {"name": "Adani Enterprises", "ms_symbol": "ADANIENT.XBOM"},
+    "ADANIPORTS.NS": {"name": "Adani Ports & SEZ", "ms_symbol": "ADANIPORTS.XBOM"},
     "JSWSTEEL.NS": {"name": "JSW Steel", "ms_symbol": "JSWSTEEL.XBOM"}
 }
 
@@ -41,21 +59,17 @@ def health():
 
 @app.route('/symbols')
 def get_symbols():
-    # Return only the display symbols (e.g., "RELIANCE")
     return jsonify([s.replace(".NS", "") for s in SYMBOLS])
 
 @app.route('/stocks/all')
 def get_all_stocks():
-    """Fetch latest EOD data for all stocks using a single Marketstack API call."""
     if not API_KEY:
         return jsonify({"error": "Marketstack API key not configured."}), 500
 
     try:
-        # Get all Marketstack symbols
         ms_symbols = [STOCK_MAP[s]["ms_symbol"] for s in SYMBOLS if s in STOCK_MAP]
         symbols_param = ",".join(ms_symbols)
 
-        # Make a SINGLE API call for all latest EOD data
         eod_url = f"{BASE_URL}/tickers/{symbols_param}/eod/latest"
         resp = requests.get(eod_url, params={"access_key": API_KEY})
         data = resp.json()
@@ -63,13 +77,10 @@ def get_all_stocks():
         if "error" in data:
             return jsonify({"error": data["error"]["message"]}), 500
 
-        all_stock_data = []
-        # The response contains a 'data' key which is a list of stock objects
         eod_list = data.get("data", [])
-        
-        # Create a lookup for quick access
         eod_lookup = {item['symbol']: item for item in eod_list}
 
+        all_stock_data = []
         for sym in SYMBOLS:
             if sym not in STOCK_MAP:
                 continue
@@ -98,9 +109,9 @@ def get_all_stocks():
                 "marketCap": None,
                 "pe": None,
                 "sector": "N/A",
-                "history": [] # History will be fetched separately
+                "history": []
             })
-            
+
         return jsonify(all_stock_data)
 
     except Exception as e:
@@ -108,7 +119,6 @@ def get_all_stocks():
 
 @app.route('/stock/<symbol>')
 def get_stock_history(symbol):
-    """Fetch historical chart data for a single stock using yfinance."""
     try:
         ticker_symbol = symbol.upper() + ".NS"
         ticker = yf.Ticker(ticker_symbol)
@@ -121,7 +131,7 @@ def get_stock_history(symbol):
             for d, row in hist.iterrows()
         ]
         return jsonify({"symbol": symbol.upper(), "history": history})
-        
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
